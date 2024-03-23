@@ -15,6 +15,10 @@ https://github.com/data-for-good-bg/semantic-schools
 https://wdqs-tutorial.toolforge.org/
 
 
+https://en.wikibooks.org/wiki/SPARQL/Expressions_and_Functions#BIND
+
+sparql.dev
+
 #термини
 
 ООП - общообразователна подготовка
