@@ -4,7 +4,7 @@ def define_db_schema():
     m = MetaData()
 
     Table(
-        'regions',
+        'region',
         m,
         Column('id', String(20), primary_key=True),
         Column('label', String(20))
@@ -24,5 +24,7 @@ def define_db_schema():
         m,
         Column('id', String(20), primary_key=True),
         Column('label', String(30)),
-        Column('region_id', ForeignKey('municipality.id'), nullable=False)
+        Column('municipality_id', ForeignKey('municipality.id'), nullable=False)
     )
+
+    return m
