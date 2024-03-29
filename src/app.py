@@ -63,8 +63,7 @@ SCHOOLS_REPO = SparqlRepo(
 )
 
 
-def import_cities(db: Engine):
-    cities_query = '''
+SPARQL_CITY = '''
 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
 PREFIX schema: <http://schema.org/>
 PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
@@ -77,16 +76,63 @@ SELECT distinct ?city ?cityLabel
     FILTER(lang(?cityLabel)="bg")
 }
 '''
-    cities = SCHOOLS_REPO.get_csv_results(cities_query)
-    with Session(db) as session:
 
-        existing_cities = get_existing_objects(session, City.c.id)
+SPARQL_SCHOOL = '''
+PREFIX : <https://schools.ontotext.com/data/resource/ontology/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX schema: <http://schema.org/>
+SELECT distinct ?school ?schoolName ?schoolPlace
+ WHERE {
+    ?school rdf:type schema:School;
+            schema:name ?schoolName;
+            :place ?schoolPlace.
+
+    ?schoolPlace rdf:type schema:City.
+
+    FILTER(lang(?schoolName)="bg")
+}
+ORDER BY ?school ?schoolPlace
+'''
+
+SPARQL_DZI = '''
+PREFIX : <https://schools.ontotext.com/data/resource/ontology/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX schema: <http://schema.org/>
+PREFIX qb: <http://purl.org/linked-data/cube#>
+PREFIX cube: <https://schools.ontotext.com/data/resource/cube/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT distinct ?dzi ?dziDate ?dziLabel ?dziComment
+ WHERE {
+    ?dzi qb:structure cube:dzi;
+         :date ?dziDate;
+         rdfs:label ?dziLabel;
+         rdfs:comment ?dziComment.
+}
+ORDER by ?dzi
+'''
+
+
+def import_sparql_query(db, sparql_repo: SparqlRepo, query: str, table: Table, id_column: Column, raw_data_processor = None):
+
+    logger.info(f'Executing SPARQL query for {table.name}')
+    raw_objects = sparql_repo.get_csv_results(query)
+    logger.debug(f'Executing SPARQL query for {table.name}')
+
+    if raw_data_processor:
+        logger.debug(f'Executing raw data processor for {table.name}')
+        raw_objects = raw_data_processor(raw_objects)
+
+    with Session(db) as session:
+        existing_ids = get_existing_objects(session, id_column)
 
         to_insert, to_update = prepare_for_insert_or_update(
-            City, cities, existing_cities
+            table, raw_objects, existing_ids
         )
-        insert_objects(session, City, to_insert)
-        update_objects(session, City, to_update)
+
+        logger.debug(f'Inserting new objects for {table.name}')
+        insert_objects(session, table, to_insert)
+        logger.debug(f'Updataing existing objects for {table.name}')
+        update_objects(session, table, to_update)
 
         session.commit()
 
@@ -111,89 +157,27 @@ def drop_duplicated_schools(schools):
     }
     for schools in dups.values():
         result.append(schools[0])
-        print(f'school with duplicates: {schools[0]}')
+        logger.info(f'school with duplicated cities (:place predicate): {schools[0]}')
         for dup_school in schools[1:]:
-            print(f'    duplicate: {dup_school}')
+            logger.debug(f'    duplicate: {dup_school}')
 
     return result
 
 
-def import_schools(db):
-    query = '''
-PREFIX : <https://schools.ontotext.com/data/resource/ontology/>
-PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-PREFIX schema: <http://schema.org/>
-SELECT distinct ?school ?schoolName ?schoolPlace
- WHERE {
-    ?school rdf:type schema:School;
-            schema:name ?schoolName;
-            :place ?schoolPlace.
 
-    ?schoolPlace rdf:type schema:City.
-
-    FILTER(lang(?schoolName)="bg")
-}
-ORDER BY ?school ?schoolPlace
-'''
-    schools = SCHOOLS_REPO.get_csv_results(query)
-
-    schools = drop_duplicated_schools(schools)
-
-    with Session(db) as session:
-
-        existing_schools = get_existing_objects(session, School.c.id)
-
-        to_insert, to_update = prepare_for_insert_or_update(
-            School, schools, existing_schools
-        )
-        insert_objects(session, School, to_insert)
-        update_objects(session, School, to_update)
-
-        session.commit()
-
-
-def import_dzi(db):
-    query = '''
-PREFIX : <https://schools.ontotext.com/data/resource/ontology/>
-PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-PREFIX schema: <http://schema.org/>
-PREFIX qb: <http://purl.org/linked-data/cube#>
-PREFIX cube: <https://schools.ontotext.com/data/resource/cube/>
-PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-SELECT distinct ?dzi ?dziDate ?dziLabel ?dziComment
- WHERE {
-    ?dzi qb:structure cube:dzi;
-         :date ?dziDate;
-         rdfs:label ?dziLabel;
-         rdfs:comment ?dziComment.
-}
-ORDER by ?dzi
-'''
-    dzi = SCHOOLS_REPO.get_csv_results(query)
-    # convert from str to date
-    for dzi_item in dzi:
+def convert_dzi_date(raw_objects):
+    for dzi_item in raw_objects:
         if len(dzi_item) == 4:
             dzi_item[1] = date.fromisoformat(dzi_item[1])
-
-    with Session(db) as session:
-        existing_dzi = get_existing_objects(session, Dzi.c.id)
-
-        to_insert, to_update = prepare_for_insert_or_update(
-            Dzi, dzi, existing_dzi
-        )
-
-        insert_objects(session, Dzi, to_insert)
-        update_objects(session, Dzi, to_update)
-
-        session.commit()
-
+    return raw_objects
 
 def main():
     db_url = 'sqlite:////home/vitali/projects/data-for-good/educational-data/data/data.sqlite'
     db = create_engine(db_url)
-    import_cities(db)
-    import_schools(db)
-    import_dzi(db)
+
+    import_sparql_query(db, SCHOOLS_REPO, SPARQL_CITY, City, City.c.id, None)
+    import_sparql_query(db, SCHOOLS_REPO, SPARQL_SCHOOL, School, School.c.id, drop_duplicated_schools)
+    import_sparql_query(db, SCHOOLS_REPO, SPARQL_DZI, Dzi, Dzi.c.id, convert_dzi_date)
 
 
 if __name__ == '__main__':
