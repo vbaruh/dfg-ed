@@ -1,14 +1,27 @@
 #!/usr/bin/env python3
 
 import csv
+import logging
+
 from dataclasses import dataclass
 from collections import defaultdict
+from datetime import date
 
 from SPARQLWrapper import SPARQLWrapper, CSV
-from sqlalchemy import create_engine, Engine, Table, select, insert, update
+from sqlalchemy import create_engine, Engine, Table, Column, select, insert, update
 from sqlalchemy.orm import Session
 
-from main.models import City, School
+from main.models import City, School, Dzi
+from main.import_utils import (
+    get_existing_objects,
+    prepare_for_insert_or_update,
+    insert_objects,
+    update_objects
+)
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class SparqlRepo:
@@ -50,34 +63,6 @@ SCHOOLS_REPO = SparqlRepo(
 )
 
 
-def get_existing_cities(session: Session):
-    existing_cities = set()
-    st = select(City.c.id).distinct()
-    print(st)
-
-    for row in session.execute(st):
-        existing_cities.add(row[0])
-
-    return existing_cities
-
-
-def insert_cities(cities, session: Session):
-    for city in cities:
-        session.execute((
-            insert(City)
-            .values(id=city[0], label=city[1])
-        ))
-
-
-def update_cities(cities, session: Session):
-    for city in cities:
-        session.execute((
-            update(City)
-            .where(City.c.id == city[0])
-            .values(label=city[1])
-        ))
-
-
 def import_cities(db: Engine):
     cities_query = '''
 PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
@@ -95,23 +80,13 @@ SELECT distinct ?city ?cityLabel
     cities = SCHOOLS_REPO.get_csv_results(cities_query)
     with Session(db) as session:
 
-        existing_cities = get_existing_cities(session)
+        existing_cities = get_existing_objects(session, City.c.id)
 
-        to_insert = []
-        to_update = []
-
-        for city_row in cities:
-            if len(city_row) == 2:
-                if city_row[0] in existing_cities:
-                    to_update.append(city_row)
-                else:
-                    to_insert.append(city_row)
-
-        print(f'cities to insert: {len(to_insert)}')
-        print(f'cities to update: {len(to_update)}')
-
-        insert_cities(to_insert, session)
-        update_cities(to_update, session)
+        to_insert, to_update = prepare_for_insert_or_update(
+            City, cities, existing_cities
+        )
+        insert_objects(session, City, to_insert)
+        update_objects(session, City, to_update)
 
         session.commit()
 
@@ -143,32 +118,6 @@ def drop_duplicated_schools(schools):
     return result
 
 
-def get_existing_schools(session: Session):
-    existing_schools = set()
-
-    for row in session.execute(select(School.c.id).distinct()):
-        existing_schools.add(row[0])
-
-    return existing_schools
-
-
-def insert_schools(schools, session: Session):
-    for school in schools:
-        session.execute((
-            insert(School)
-            .values(id=school[0], name=school[1], city_id=school[2])
-        ))
-
-
-def update_schools(schools, session: Session):
-    for school in schools:
-        session.execute((
-            update(School)
-            .where(School.c.id == school[0])
-            .values(name=school[1],city_id=school[2])
-        ))
-
-
 def import_schools(db):
     query = '''
 PREFIX : <https://schools.ontotext.com/data/resource/ontology/>
@@ -192,31 +141,59 @@ ORDER BY ?school ?schoolPlace
 
     with Session(db) as session:
 
-        existing_schools = get_existing_schools(session)
+        existing_schools = get_existing_objects(session, School.c.id)
 
-        to_insert = []
-        to_update = []
-
-        for school_row in schools:
-            if len(school_row) == 3:
-                if school_row[0] in existing_schools:
-                    to_update.append(school_row)
-                else:
-                    to_insert.append(school_row)
-
-        print(f'schools to insert: {len(to_insert)}')
-        print(f'schools to update: {len(to_update)}')
-
-        insert_schools(to_insert, session)
-        update_schools(to_update, session)
+        to_insert, to_update = prepare_for_insert_or_update(
+            School, schools, existing_schools
+        )
+        insert_objects(session, School, to_insert)
+        update_objects(session, School, to_update)
 
         session.commit()
+
+
+def import_dzi(db):
+    query = '''
+PREFIX : <https://schools.ontotext.com/data/resource/ontology/>
+PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
+PREFIX schema: <http://schema.org/>
+PREFIX qb: <http://purl.org/linked-data/cube#>
+PREFIX cube: <https://schools.ontotext.com/data/resource/cube/>
+PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+SELECT distinct ?dzi ?dziDate ?dziLabel ?dziComment
+ WHERE {
+    ?dzi qb:structure cube:dzi;
+         :date ?dziDate;
+         rdfs:label ?dziLabel;
+         rdfs:comment ?dziComment.
+}
+ORDER by ?dzi
+'''
+    dzi = SCHOOLS_REPO.get_csv_results(query)
+    # convert from str to date
+    for dzi_item in dzi:
+        if len(dzi_item) == 4:
+            dzi_item[1] = date.fromisoformat(dzi_item[1])
+
+    with Session(db) as session:
+        existing_dzi = get_existing_objects(session, Dzi.c.id)
+
+        to_insert, to_update = prepare_for_insert_or_update(
+            Dzi, dzi, existing_dzi
+        )
+
+        insert_objects(session, Dzi, to_insert)
+        update_objects(session, Dzi, to_update)
+
+        session.commit()
+
 
 def main():
     db_url = 'sqlite:////home/vitali/projects/data-for-good/educational-data/data/data.sqlite'
     db = create_engine(db_url)
     import_cities(db)
     import_schools(db)
+    import_dzi(db)
 
 
 if __name__ == '__main__':

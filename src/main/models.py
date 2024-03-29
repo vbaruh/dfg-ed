@@ -1,4 +1,4 @@
-from sqlalchemy import MetaData, Table, Column, Integer, String, ForeignKey
+from sqlalchemy import MetaData, Table, Column, Integer, String, ForeignKey, Date
 
 Models = MetaData()
 
@@ -34,4 +34,14 @@ School = Table(
     Column('id', String(20), primary_key=True),
     Column('name', String(30), nullable=False),
     Column('city_id', ForeignKey('city.id'), nullable=False)
+)
+
+# TODO: better name?
+Dzi = Table(
+    'dzi',
+    Models,
+    Column('id', String(20), primary_key=True),
+    Column('date', Date, nullable=False),
+    Column('name', String(20), nullable=False),
+    Column('comment', String(50)),
 )
