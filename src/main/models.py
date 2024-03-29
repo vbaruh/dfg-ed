@@ -1,4 +1,7 @@
-from sqlalchemy import MetaData, Table, Column, Integer, String, ForeignKey, Date
+from sqlalchemy import (
+    MetaData, Table, Column,
+    Integer, String, ForeignKey, Date, Double
+)
 
 Models = MetaData()
 
@@ -44,4 +47,18 @@ Dzi = Table(
     Column('date', Date, nullable=False),
     Column('name', String(20), nullable=False),
     Column('comment', String(50)),
+)
+
+Score = Table(
+    'score',
+    Models,
+    Column('id', String(60), primary_key=True),
+    Column('dzi_id', ForeignKey('dzi.id'), nullable=False),
+    Column('school_id', ForeignKey('school.id'), nullable=False),
+    # TODO: define as foriegn key after subjects are imported
+    Column('subject_id', String(20), nullable=False),
+    Column('score', Double),
+    Column('grade', Double),
+    Column('grade_level', Integer),
+    Column('quantity_people', Integer)
 )
