@@ -23,3 +23,8 @@ sparql.dev
 
 ООП - общообразователна подготовка
 ПП - профилна подготовка
+
+# sqlite
+
+
+sqlite3 empty.sqlite "VACUUM;"

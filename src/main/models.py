@@ -1,30 +1,37 @@
 from sqlalchemy import MetaData, Table, Column, Integer, String, ForeignKey
 
-def define_db_schema():
-    m = MetaData()
+Models = MetaData()
 
-    Table(
-        'region',
-        m,
-        Column('id', String(20), primary_key=True),
-        Column('label', String(20))
-    )
+Region = Table(
+    'region',
+    Models,
+    Column('id', String(20), primary_key=True),
+    Column('label', String(20))
+)
 
-    Table(
-        'municipality',
-        m,
-        Column('id', String(20), primary_key=True),
-        Column('label', String(30)),
-        Column('region_id', ForeignKey('region.id'), nullable=False)
-    )
+Municipality = Table(
+    'municipality',
+    Models,
+    Column('id', String(20), primary_key=True),
+    Column('label', String(30), nullable=False),
+    Column('region_id', ForeignKey('region.id'), nullable=False)
+)
 
-    # TODO: how to distinguish city and villages? wikidata?
-    Table(
-        'city',
-        m,
-        Column('id', String(20), primary_key=True),
-        Column('label', String(30)),
-        Column('municipality_id', ForeignKey('municipality.id'), nullable=False)
-    )
+# TODO: how to distinguish city and villages? wikidata?
+# TODO: do we want to import population data?
+City: Table = Table(
+    'city',
+    Models,
+    Column('id', String(20), primary_key=True),
+    Column('label', String(30), nullable=False),
+    # TODO: add this foriegn key after sfWithin predicate is fixed
+    # Column('municipality_id', ForeignKey('municipality.id'), nullable=False)
+)
 
-    return m
+School = Table(
+    'school',
+    Models,
+    Column('id', String(20), primary_key=True),
+    Column('name', String(30), nullable=False),
+    Column('city_id', ForeignKey('city.id'), nullable=False)
+)
