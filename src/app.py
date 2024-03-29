@@ -238,8 +238,11 @@ def convert_score_types(raw_objects):
 
 
 def main():
+    # TODO: properly specify path to the sqlite db
     db_url = 'sqlite:////home/vitali/projects/data-for-good/educational-data/data/data.sqlite'
     db = create_engine(db_url)
+
+    # TODO: call alembic programatically to create/update db schema
 
     import_sparql_query(db, SCHOOLS_REPO, SPARQL_CITY, City, City.c.id, None)
     import_sparql_query(db, SCHOOLS_REPO, SPARQL_SCHOOL, School, School.c.id, drop_duplicated_schools)
